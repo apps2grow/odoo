@@ -45,6 +45,7 @@ class IrTranslationImport(object):
         # Note that Postgres will NOT inherit the constraints or indexes
         # of ir_translation, so this copy will be much faster.
         query = """ CREATE TEMP TABLE %s (
+                        id SERIAL PRIMARY KEY,
                         imd_model VARCHAR(64),
                         imd_name VARCHAR(128),
                         noupdate BOOLEAN
@@ -175,12 +176,17 @@ class IrTranslationImport(object):
                             WHERE EXCLUDED.value IS NOT NULL AND EXCLUDED.value != '';
                        """ % (self._model_table, self._table))
             count += cr.rowcount
-        cr.execute(""" INSERT INTO %s(name, lang, res_id, src, type, value, module, state, comments)
+        cr.execute(""" INSERT INTO {model}(name, lang, res_id, src, type, value, module, state, comments)
                        SELECT name, lang, res_id, src, type, value, module, state, comments
-                       FROM %s
-                       WHERE %s
+                       FROM {table}
+                       WHERE {where} AND NOT EXISTS (
+                           SELECT FROM ONLY {model}
+                           WHERE type = {table}.type AND name = {table}.name AND lang = {table}.lang AND res_id = {table}.res_id
+                       )
                        ON CONFLICT DO NOTHING;
-                   """ % (self._model_table, self._table, 'noupdate IS TRUE' if self._overwrite else 'TRUE'))
+                   """.format(model=self._model_table,
+                              table=self._table,
+                              where='noupdate IS TRUE' if self._overwrite else 'TRUE'))
         count += cr.rowcount
 
         if self._debug:
