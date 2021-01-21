@@ -172,6 +172,7 @@ class HrSalaryRule(models.Model):
         help="Eventual third party involved in the salary payment of the employees.")
     input_ids = fields.One2many('hr.rule.input', 'input_id', string='Inputs', copy=True)
     note = fields.Text(string='Description')
+    analytic_account_id = fields.Many2one('account.analytic.account', 'Analytic Account')
 
     @api.constrains('parent_rule_id')
     def _check_parent_rule_id(self):
@@ -194,25 +195,34 @@ class HrSalaryRule(models.Model):
         """
         :param localdict: dictionary containing the environement in which to compute the rule
         :return: returns a tuple build as the base/amount computed, the quantity and the rate
-        :rtype: (float, float, float)
+        :rtype: [(amount float, quantity float, rate float, analytic_account_id integer/False)]
         """
         self.ensure_one()
         if self.amount_select == 'fix':
             try:
-                return self.amount_fix, float(safe_eval(self.quantity, localdict)), 100.0
+                return [(self.amount_fix, float(safe_eval(self.quantity, localdict)), 100.0, False)]
             except:
                 raise UserError(_('Wrong quantity defined for salary rule %s (%s).') % (self.name, self.code))
         elif self.amount_select == 'percentage':
             try:
-                return (float(safe_eval(self.amount_percentage_base, localdict)),
-                        float(safe_eval(self.quantity, localdict)),
-                        self.amount_percentage)
+                return [(float(safe_eval(self.amount_percentage_base, localdict)),
+                         float(safe_eval(self.quantity, localdict)),
+                         self.amount_percentage,
+                         False)]
             except:
                 raise UserError(_('Wrong percentage base or quantity defined for salary rule %s (%s).') % (self.name, self.code))
         else:
             try:
+                localdict['rule'] = self
                 safe_eval(self.amount_python_compute, localdict, mode='exec', nocopy=True)
-                return float(localdict['result']), 'result_qty' in localdict and localdict['result_qty'] or 1.0, 'result_rate' in localdict and localdict['result_rate'] or 100.0
+                if localdict['result_list']:
+                    return localdict['result_list']
+                else:
+                    return [(float(localdict['result']), \
+                        'result_qty' in localdict and localdict['result_qty'] or 1.0, \
+                        'result_rate' in localdict and localdict['result_rate'] or 100.0, \
+                        'result_analytic' in localdict and localdict['result_analytic'] or False
+                    )]
             except:
                 raise UserError(_('Wrong python code defined for salary rule %s (%s).') % (self.name, self.code))
 
@@ -234,6 +244,7 @@ class HrSalaryRule(models.Model):
                 raise UserError(_('Wrong range condition defined for salary rule %s (%s).') % (self.name, self.code))
         else:  # python code
             try:
+                localdict['rule'] = self
                 safe_eval(self.condition_python, localdict, mode='exec', nocopy=True)
                 return 'result' in localdict and localdict['result'] or False
             except:

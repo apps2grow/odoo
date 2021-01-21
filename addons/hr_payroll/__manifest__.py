@@ -11,6 +11,7 @@
         'hr_contract',
         'hr_holidays',
         'decimal_precision',
+        'analytic',
     ],
     'data': [
         'security/hr_payroll_security.xml',

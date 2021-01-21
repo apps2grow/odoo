@@ -346,26 +346,32 @@ class HrPayslip(models.Model):
             employee = contract.employee_id
             localdict = dict(baselocaldict, employee=employee, contract=contract)
             for rule in sorted_rules:
-                key = rule.code + '-' + str(contract.id)
-                localdict['result'] = None
+                localdict['result'] = None #amount
                 localdict['result_qty'] = 1.0
                 localdict['result_rate'] = 100
+                localdict['result_analytic'] = None
+                localdict['result_list'] = None
                 #check if the rule can be applied
                 if rule._satisfy_condition(localdict) and rule.id not in blacklist:
-                    #compute the amount of the rule
-                    amount, qty, rate = rule._compute_rule(localdict)
+                  #compute the amount etc. of the rule
+                  payslip_lines = rule._compute_rule(localdict)
+                  for payslip_line in payslip_lines:
+                    amount, qty, rate, analytic_account_id = payslip_line
+                    key = rule.code + '-' + str(contract.id) + '-' + str(analytic_account_id)
+                    code_analytic = rule.code + '-' + str(analytic_account_id)
                     #check if there is already a rule computed with that code
-                    previous_amount = rule.code in localdict and localdict[rule.code] or 0.0
+                    previous_amount = code_analytic in localdict and localdict[code_analytic] or 0.0
                     #set/overwrite the amount computed for this rule in the localdict
                     tot_rule = amount * qty * rate / 100.0
-                    localdict[rule.code] = tot_rule
-                    rules_dict[rule.code] = rule
+                    localdict[code_analytic] = tot_rule
+                    rules_dict[code_analytic] = rule
                     #sum the amount for its salary category
                     localdict = _sum_salary_rule_category(localdict, rule.category_id, tot_rule - previous_amount)
                     #create/overwrite the rule in the temporary results
                     result_dict[key] = {
                         'salary_rule_id': rule.id,
                         'contract_id': contract.id,
+                        'analytic_account_id': analytic_account_id,
                         'name': rule.name,
                         'code': rule.code,
                         'category_id': rule.category_id.id,
